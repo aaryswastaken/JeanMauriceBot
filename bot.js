@@ -1,6 +1,6 @@
 require("dotenv").config();
 const fs = require("fs");
-const {Client, Intents, DMChannel} = require("discord.js");
+const {Client, Intents, MessageEmbed} = require("discord.js");
 const client = new Client({intents: [
         Intents.FLAGS.GUILDS,
         Intents.FLAGS.GUILD_MEMBERS,
@@ -57,9 +57,91 @@ function createDM(user, then) {
     })
 }
 
-function procedure(user) { // This function will handle the communication with the user
-    switch (cache.activeComm[user.id].state) {
+function sendListAccordingToLevel(channel, level) {
+    let lvl = cache.levels[level];
 
+    let msg = new MessageEmbed()
+        .setColor("#0099ff")
+        .setTitle(lvl.name)
+        .addField("⚠ Important ⚠", lvl.desc, true)
+        .setDescription(Object.entries(lvl.content).map(([key, val]) => {
+            return `${key} : ${val.id}`
+        }).join("\n"));
+
+    channel.send({embeds: [msg]});
+}
+
+function checkIfInProcedure(user) {
+    if(Object.keys(cache.activeComm).includes(user.id)) {
+        return (cache.activeComm[user.id].state !== -1)
+    }
+
+    return false
+}
+
+function processChoice(user, ct) {
+    console.log(`User ${user.username} choose ${ct.join(", ")}`);
+}
+
+function handleResponse(user, message) { // If this function is called, the user is registered in cache, no verification needed in this case
+    let ct = message.content.replace(/ */, ""); // Delete blank spaces before msg
+    let state = cache.activeComm[user.id].state;
+
+    let info = ct.split(" ");
+    let stdQTY = cache.levels[state].qty;
+
+    let error = "";
+
+    if(stdQTY === -1 && info.length === 0) {
+        error = format(config.message.shouldHaveAtLeastOneChoice);
+    }
+    if(stdQTY > 0 && stdQTY !== info.length) {
+        error = format(config.message.notRightNumberOfArgs) + stdQTY.toString();
+    }
+
+    if(error !== "") {
+        message.reply(message)
+            .then(() => {console.log(`An error occured with ${user.username}#${user.tag}, replied ${error}`)})
+            .catch(console.error);
+    } else {
+        processChoice(user, ct);
+    }
+}
+
+function procedure(user) { // This function will handle the communication with the user
+    /*
+        Levels :
+         - -1: Not in procedure
+         - 0 : Starting
+             + Niveau (Terminal, première ...)
+         - 1 : Classe (1eA, B, C, D ...)
+         - 2 : SPÉ+Prof (Maths Krieger, Maths Seda)
+         - 3 : Options
+    */
+    if(Object.keys(cache.activeComm).includes(user.id)) {
+        let level = cache.activeComm[user.id].state;
+
+
+        client.channels.fetch(cache.activeComm[user.id].DMChannelID)
+            .then((DMChannel) => {
+                if(cache.activeComm[user.id].state === -1) {
+                    DMChannel.send("An error occurred : procedure() was called for the user with -1 registration ...");
+                } else {
+                    if(cache.levels.length >= level) {
+                        let msg = config.message["level"+level.toString()]; // Is there a predefined message ?
+
+                        msg = msg || ("Bien, on va alors passer à la suite : "+cache.levels[level].name); // If not, go for the default one
+
+                        DMChannel.send(format(msg)); // Send first message ...
+
+                        sendListAccordingToLevel(DMChannel, level); // Then send list of according level from DMChannel
+                    }
+                }
+            });
+    } else {
+        createDM(user, (channel) => {
+            channel.send("An error occurred : procedure() was called for the user without being registered in cache");
+        })
     }
 }
 
@@ -126,6 +208,14 @@ function handleRestartUser(user) { // !restart
     }
 }
 
+function setManualLVL(message, lvlMSG) {
+    let lvl = Number.parseInt(lvlMSG);
+
+    cache.activeComm[user.id].state = lvl;
+
+    refreshCache();
+}
+
 function commandHandler(msg, message, isMP) { // Handles every commands (starting with "!")
     console.log(`New command ${msg}`)
     let ct = msg.split(" ");
@@ -139,6 +229,8 @@ function commandHandler(msg, message, isMP) { // Handles every commands (startin
         case "restart":
             handleRestartUser(message.author);
             break;
+        case "setlvl":
+            setManualLVL(message, ct[1]);
     }
 }
 
@@ -153,10 +245,14 @@ client.on("messageCreate", (message) => { // Whenever someone send a message
         if(msg[0] === discriminator) {
             commandHandler(msg, message, (message.guildId === null));
         }
+
+        if(checkIfInProcedure(message.author)) {
+            handleResponse(message.author, message);
+        }
     }
 })
 
-client.login(process.env.TOKEN) // Entrypoint 
+client.login(process.env.TOKEN) // Entrypoint
     .then(r => {
         console.log("[*] Restoring DM ... ");
         if(Object.keys(cache.activeComm).length > 0) {
