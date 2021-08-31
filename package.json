@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/vsahler/JeanMauriceBot/issues"
   },
-  "homepage": "https://github.com/vsahler/JeanMauriceBot#readme"
+  "homepage": "https://github.com/vsahler/JeanMauriceBot#readme",
+  "dependencies": {
+    "discord.js": "^13.1.0"
+  }
 }
