@@ -1,4 +1,4 @@
-require("dotenv").config()
+require("dotenv").config();
 const {Client, Intents} = require("discord.js");
 const client = new Client({intents: [
         Intents.FLAGS.GUILDS,
@@ -18,6 +18,28 @@ const client = new Client({intents: [
         Intents.FLAGS.DIRECT_MESSAGE_TYPING
     ]});
 
+const discriminator = "!";
+
+
+
+function handleNewUser(member) {
+    console.log(`Handling new user ... ${member.user.username}`)
+}
+
+function commandHandler(msg, message) {
+    console.log(`New command ${msg}`)
+    let ct = msg.split(" ");
+    switch (ct[0].substring(discriminator.length)) {
+        case "newuser":
+            handleNewUser(message.member);
+            break;
+    }
+}
+
+client.on("guildMemberAdd", (member) => {
+    handleNewUser(member)
+})
+
 client.on("messageCreate", (message) => {
     /* console.log(`${message.author.username} : ${message.content}`)
     if(!message.author.bot) {
@@ -25,7 +47,12 @@ client.on("messageCreate", (message) => {
             .then(() => console.log(`Replied to message "${message.content}"`))
             .catch(console.error);
     } */
-
+    if(!message.author.bot) {
+        let msg = message.content.toLowerCase().replace(/ */, "");
+        if(msg[0] === discriminator) {
+            commandHandler(msg, message);
+        }
+    }
 })
 
 client.login(process.env.TOKEN)
