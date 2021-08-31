@@ -1,0 +1,19 @@
+{
+  "name": "jeanmauricebot",
+  "version": "1.0.0",
+  "description": "Discord.js Bot",
+  "main": "bot.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vsahler/JeanMauriceBot.git"
+  },
+  "author": "vsahler",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/vsahler/JeanMauriceBot/issues"
+  },
+  "homepage": "https://github.com/vsahler/JeanMauriceBot#readme"
+}
