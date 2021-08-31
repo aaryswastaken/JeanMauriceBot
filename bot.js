@@ -1,4 +1,5 @@
 require("dotenv").config();
+const fs = require("fs");
 const {Client, Intents} = require("discord.js");
 const client = new Client({intents: [
         Intents.FLAGS.GUILDS,
@@ -20,10 +21,21 @@ const client = new Client({intents: [
 
 const discriminator = "!";
 
+let config = JSON.parse(fs.readFileSync("./config.json"));
 
+function format(str) {
+    let s = str
+    for(let [key, value] of Object.entries(config.replace)) {
+        s = s.replaceAll(key, value);
+    }
+
+    return s
+}
 
 function handleNewUser(member) {
-    console.log(`Handling new user ... ${member.user.username}`)
+    console.log(`Handling new user ... ${member.user.username}`);
+
+    member.user.send(format(config.welcomeMessage))
 }
 
 function commandHandler(msg, message) {
