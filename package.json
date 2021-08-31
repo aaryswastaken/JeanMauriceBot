@@ -4,7 +4,8 @@
   "description": "Discord.js Bot",
   "main": "bot.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "run": "node bot.js"
   },
   "repository": {
     "type": "git",
@@ -17,6 +18,7 @@
   },
   "homepage": "https://github.com/vsahler/JeanMauriceBot#readme",
   "dependencies": {
-    "discord.js": "^13.1.0"
+    "discord.js": "^13.1.0",
+    "dotenv": "^10.0.0"
   }
 }
