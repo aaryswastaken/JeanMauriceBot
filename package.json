@@ -5,7 +5,8 @@
   "main": "bot.js",
   "scripts": {
     "test": "jest",
-    "run": "node bot.js"
+    "run": "node bot.js",
+    "clean": "node clean.js"
   },
   "repository": {
     "type": "git",

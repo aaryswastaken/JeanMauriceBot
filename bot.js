@@ -1,7 +1,6 @@
 require("dotenv").config();
 const fs = require("fs");
 const {Client, Intents, MessageEmbed, DMChannel} = require("discord.js");
-const {parse} = require("dotenv");
 const client = new Client({intents: [
         Intents.FLAGS.GUILDS,
         Intents.FLAGS.GUILD_MEMBERS,
@@ -59,6 +58,10 @@ function uniq(a) {
 
 ///// START OF THE REAL MESS
 
+function isChar(n) {
+    return n.replaceAll(/[0-9]*/gm, "").length !== 0
+}
+
 function createDM(user, then) {
     user.createDM().then((channel) => {
         cache.activeComm[user.id].DMChannelID = channel.id;
@@ -66,6 +69,63 @@ function createDM(user, then) {
         then(channel);
     })
 }
+
+// ------------ CLEAN ------------
+const channelList = [
+    "882174415314489417", // Salons textuels
+    "882174415314489419", //  |- général
+    "882175606291308615", //  |- temp
+    "882512852383051807", //  |- log
+    "882513817798602753", // Terminale
+    "882527373948518431", // Espace des classes
+    "882547251438825483", // tc
+    "882547264755748924"  // 1c
+]
+
+const roleList = [
+    "882175695571284000", // Jean maurice
+    "882239582907805727", // Terminale
+    "882239844594626600", // TC
+    "882239748343746620", // 1C
+    "882543508081229866", // ---- level1
+    "882174414769258516"  // everyone
+]
+
+async function clean(message) {
+    console.log(`Cleaning sender (${message.author.username}) roles`)
+    await message.member.edit({roles: []});
+
+    console.log("### Fetching channels ...")
+    let channels = await message.guild.channels.fetch();
+
+    console.log("### Begin check ...")
+    await Promise.all(channels.map(async (channel) => {
+        console.log(`checking ${channel.id}`);
+        if (!channelList.includes(channel.id.toString())) {
+            await channel.delete();
+            console.log(" - deleted")
+        }
+    }));
+
+    console.log("### Fetching roles ...")
+    let roles = await message.guild.roles.fetch();
+
+    console.log("### Begin check ...")
+    await Promise.all(roles.map(async (role) => {
+        console.log(`checking ${role.id}`)
+        if (!roleList.includes(role.id.toString())) {
+            await role.delete();
+            console.log(" - deleted");
+        }
+    }))
+
+    console.log("### Cleaning cache.json ...");
+    fs.writeFileSync("./cache.json", fs.readFileSync("./cache.json.save"))
+
+    console.log("finished")
+    readCache();
+}
+// -------------------------------
 
 function sendListAccordingToLevel(channel, level) {
     let lvl = cache.levels[level];
@@ -94,8 +154,8 @@ function checkIfInProcedure(user) {
     return false
 }
 
-function createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject) {
-    guild.roles.create({
+async function createFinalRole(guild, name, levelPosition, roleLevel) {
+    let role = await guild.roles.create({
         name: name,
         color: "DEFAULT",
         hoist: false,
@@ -103,60 +163,132 @@ function createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject)
         position: levelPosition-1,
         mentionable: true,
         reason: "A user created this role ..."
-    }).then((role) => {
-        let id = role.id;
-        console.log(`Created role #${id}, named ${name} at position #${levelPosition-1}`)
+    })
 
-        cache.levels[roleLevel].content[name] = {id: id};
+    let id = role.id;
+    console.log(`Created role #${id}, named ${name} at position #${levelPosition-1}`)
 
-        refreshCache();
+    cache.levels[roleLevel].content[name] = {id: id};
 
-        resolve(id);
-    }).catch(reject);
+    refreshCache();
+
+    return id
 }
 
-function createRole(roleName, roleLevel) { // crate role according to new information
-    return new Promise((resolve, reject) => {
-        let name = roleName.replace(/ */, "").toLowerCase();
-        name[0] = name[0].toUpperCase();
+async function createCategory(guild, name, position, roleThatHasPerm) {
+    console.log(`{~} Creating new category ! Name : ${name} | Position : ${position} | RTHP : ${roleThatHasPerm}`);
+    return guild.channels.create(name, {
+        type: "GUILD_CATEGORY",
+        position: position,
+        permissionOverwrites: [
+            {
+                type: "role",
+                id: roleThatHasPerm,
+                allow: ['SEND_MESSAGES', 'VIEW_CHANNEL']
+            }, {
+                type: "role",
+                id: guild.roles.everyone.id, // @everyone role
+                deny: ['SEND_MESSAGES', 'VIEW_CHANNEL']
+            }
+        ]
+    })
+}
 
-        client.guilds.fetch().then((guilds) => {
-            guilds.forEach((guildOAuth) => {
-                guildOAuth.fetch()
-                    .then((guild) => {
-                        let levelPosition = -1;
-                        console.log(`[*] Searching for level ${roleLevel} discriminator`)
-                        guild.roles.cache.forEach((role) => { // Search for the correct position
-                            if(role.name === ("level"+roleLevel.toString())) {
-                                levelPosition = role.position;
-                            }
-                        });
-
-                        if(levelPosition === -1) { // If no position where found
-                            console.log("[*] Search ended with no results")
-                            guild.roles.create({
-                                name: ("level"+roleLevel.toString()),
-                                color: "DEFAULT",
-                                hoist: false,
-                                permissions: guild.roles.everyone.permissions,
-                                position: guild.roles.everyone.position,
-                                mentionable: false,
-                                reason: "No level where found"
-                            }).then((role) => {
-                                console.log(`Created role #${role.id}, named ${role.name} at position #${role.position}`)
-
-                                levelPosition = role.position;
-                                createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject);
-                            }).catch(console.error);
-                        } else {
-                            console.log("[*] Search ended with one result ")
-                            createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject);
-                        }
-
-                    }).catch(reject);
-            })
-        }).catch(reject);
+async function createChannel(guild, category, name, position, roleThatHasPerm) {
+    console.log(`{~} Creating new channel ! Name : ${name} | Position : ${position} | RTHP : ${roleThatHasPerm} | Parent : #${category}`);
+    return guild.channels.create(name, {
+        type: "GUILD_TEXT",
+        position: position,
+        parent: category,
+        permissionOverwrites: [
+            {
+                type: "role",
+                id: roleThatHasPerm,
+                allow: ['SEND_MESSAGES', 'VIEW_CHANNEL']
+            }, {
+                type: "role",
+                id: guild.roles.everyone.id, // @everyone role
+                deny: ['SEND_MESSAGES', 'VIEW_CHANNEL']
+            }
+        ]
     });
+}
+
+async function handleChannelCreation(roleName, roleLevel, affiliationType, guild, user, role) {
+    console.log("Handle Channel Creation ...")
+    let channel;
+
+    switch(affiliationType) {
+        case 0:
+            console.log("[0] Channel type 0")
+            channel = await createCategory(guild, roleName, 100000, role);
+            console.log(`Channel created wish id ${channel.id}`)
+            cache.levels[roleLevel].content[roleName].affiliation = channel.id;
+            break;
+        case 1:
+            console.log("[0] Channel type 1");
+            channel = await createChannel(guild, cache.activeComm[user.id].lastAffiliation, roleName, 10000, role);
+            console.log(`Channel created with id ${channel.id}`)
+            cache.levels[roleLevel].content[roleName].channelID = channel.id;
+            break;
+        case 2:
+            console.log(`[0] Channel type 0`)
+            channel = await createChannel(guild, cache.levels[roleLevel].affiliation.detail, roleName, 10000, role);
+            console.log(`Channel created with id ${channel.id}`)
+            cache.levels[roleLevel].content[roleName].channelID = channel.id;
+            break;
+    }
+}
+
+async function createRole(roleName, roleLevel, affiliationType, user) { // crate role according to new information
+    let name = roleName.replace(/ */, "").toLowerCase();
+    name[0] = name[0].toUpperCase();
+
+    let guildsOAuth = await client.guilds.fetch();
+
+    let roleID = -1; ////// THIS IS BAD !! THIS IS CONSIDERING ONLY ONE SERVER IS ACTIVE ON EACH INSTANCE
+
+    cache.levels[roleLevel].content[roleName] = {}; // Create the placeholder
+
+    await Promise.all(
+        guildsOAuth.map(async (guildOAuth) => {
+            let guild = await guildOAuth.fetch();
+
+            let levelPosition = -1;
+            console.log(`[*] Searching for level ${roleLevel} discriminator`)
+            guild.roles.cache.forEach((role) => { // Search for the correct position
+                if(role.name === ("---- level"+roleLevel.toString())) {
+                    levelPosition = role.position;
+                }
+            });
+
+            if(levelPosition === -1) { // If no position where found
+                console.log("[*] Search ended with no results")
+                let role = await guild.roles.create({                // creating role discriminator
+                    name: ("---- level"+roleLevel.toString()),
+                    color: "DEFAULT",
+                    hoist: false,
+                    permissions: guild.roles.everyone.permissions,
+                    position: guild.roles.everyone.position,
+                    mentionable: false,
+                    reason: "No level where found"
+                });
+
+                console.log(`Created role #${role.id}, named ${role.name} at position #${role.position}`)
+
+                levelPosition = role.position;
+            } else {
+                console.log("[*] Search ended with one result ")
+            }
+
+            roleID = await createFinalRole(guild, name, levelPosition, roleLevel);
+
+            console.log("Starting Channel Creation ...")
+            await handleChannelCreation(roleName, roleLevel, affiliationType, guild, user, roleID);
+        })
+    )
+
+    return roleID
 }
 
 function postRoleApplication(state, user) {
@@ -196,11 +328,12 @@ async function applyRoles(user, rolesIDs, state) {
 async function processChoice(user, reply) {
     console.log(`User ${user.username} choose ${reply.join(", ")}`);
     let state = cache.activeComm[user.id].state;
+    let affiliationType = cache.levels[state].affiliation.type;
 
     await Promise.all(reply.map(async (r) => {
-        if(isNaN(parseInt(r))) {
+        if(isChar(r)) {
             console.log("[$] Creating Role");
-            let id = await createRole(r, state);
+            let id = await createRole(r, state, affiliationType, user);
 
             console.log("[$] Applying role after creation")
             await applyRoles(user, [id], state);
@@ -210,13 +343,19 @@ async function processChoice(user, reply) {
             console.log("[.] Applying already existing role")
             await applyRoles(user, [id], state);
         }
+
+        if(affiliationType === 0) {
+            console.log(`Caching lastAffiliation`)
+            // cache.activeComm[user.id].lastAffiliation = cache.levels[state].content[Object.keys(cache.levels[state].content)[parseInt(r)]].affiliation;
+            cache.activeComm[user.id].lastAffiliation = cache.levels[state].content[r].affiliation;
+        }
     }));
 
     postRoleApplication(state, user);
 }
 
 async function handleResponse(user, message) { // If this function is called, the user is registered in cache, no verification needed in this case
-    let ct = message.content.replace(/ */, ""); // Delete blank spaces before msg
+    let ct = message.content.replace(/ */, "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Delete blank spaces before msg
     let state = cache.activeComm[user.id].state;
 
     let reply = ct.split(" ");
@@ -226,6 +365,13 @@ async function handleResponse(user, message) { // If this function is called, th
 
     let stdQTY = cache.levels[state].qty;
     let maxId = Object.keys(cache.levels[state].content).length;
+
+    // STD QTY OVERRIDE
+    // If affiliation.type is 0, then stdQTY = 1
+    if(cache.levels[state].affiliation.type === 0 && stdQTY > 1) {
+        stdQTY = 1;
+    }
+    ///////////////////////////////////////////////
 
     let error = "";
 
@@ -246,10 +392,18 @@ async function handleResponse(user, message) { // If this function is called, th
     if(stdQTY > 0 && stdQTY !== reply.length) {
         error = format(config.messages.notRightNumberOfArgs) + stdQTY.toString();
     }
-    if(reply.some((element) => {
-        return !(isNaN(parseInt(element)) || parseInt(element) < maxId)   // If string -> false, if id <= maxId -> false, else -> true
-    })) {
-        error = format(config.messages.atLeastOneIdIsWrong)
+    // if(reply.some((element) => {
+    //     return !(isNaN(parseInt(element)) || parseInt(element) < maxId)   // If string -> false, if id <= maxId -> false, else -> true
+    // })) {
+    //     error = format(config.messages.atLeastOneIdIsWrong)
+    // }
+    let flag = false;
+    reply.forEach((element) => {
+        flag = flag || parseInt(element) > maxId;  // flag = true if index not correct
+        flag = flag && !(isChar(element));         // flag = false if string (!important)
+    });
+    if(flag) {
+        error = format(config.messages.atLeastOneIdIsWrong);
     }
 
     if(error !== "") {
@@ -371,7 +525,7 @@ function setManualLVL(message, lvlMSG) {
     refreshCache();
 }
 
-function commandHandler(msg, message, isMP) { // Handles every commands (starting with "!")
+async function commandHandler(msg, message, isMP) { // Handles every commands (starting with "!")
     console.log(`New command ${msg}`)
     let ct = msg.split(" ");
     switch (ct[0].substring(discriminator.length)) {
@@ -386,6 +540,9 @@ function commandHandler(msg, message, isMP) { // Handles every commands (startin
             break;
         case "setlvl":
             setManualLVL(message, ct[1]);
+            break;
+        case "cleanhere":
+            await clean(message)
     }
 }
 
@@ -399,7 +556,7 @@ client.on("messageCreate", async (message) => { // Whenever someone send a messa
 
         let msg = message.content.toLowerCase().replace(/ */, ""); // Deletes every spaces before the message
         if(msg[0] === discriminator) {
-            commandHandler(msg, message, (message.guildId === null));
+            await commandHandler(msg, message, (message.guildId === null));
         }
         else {
             if(checkIfInProcedure(message.author) && (message.guildId === null)) { // If DM + in procedure
