@@ -2,7 +2,6 @@ require("dotenv").config();
 const fs = require("fs");
 const {Client, Intents, MessageEmbed, DMChannel} = require("discord.js");
 const {parse} = require("dotenv");
-var JSONbig = require('json-bigint');
 const client = new Client({intents: [
         Intents.FLAGS.GUILDS,
         Intents.FLAGS.GUILD_MEMBERS,
@@ -26,11 +25,11 @@ let cache = {};
 
 ///// CACHE MANAGEMENT
 function refreshCache() {
-    fs.writeFileSync("./cache.json", JSONbig.stringify(cache))
+    fs.writeFileSync("./cache.json", JSON.stringify(cache))
 }
 
 function readCache() {
-    cache = JSONbig.parse(fs.readFileSync("./cache.json"));
+    cache = JSON.parse(fs.readFileSync("./cache.json"));
 
     if(!Object.keys(cache).includes("activeComm")) {cache.activeComm = {}}
 }
@@ -39,7 +38,7 @@ readCache();
 
 ///// CONFIG
 
-let config = JSONbig.parse(fs.readFileSync("./config.json"));
+let config = JSON.parse(fs.readFileSync("./config.json"));
 
 function format(str) {
     let s = str
@@ -95,12 +94,12 @@ function checkIfInProcedure(user) {
     return false
 }
 
-function createFinalRole(name, levelPosition, roleLevel, resolve, reject) {
+function createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject) {
     guild.roles.create({
         name: name,
         color: "DEFAULT",
         hoist: false,
-        permissions: 0,
+        permissions: guild.roles.everyone.permissions,
         position: levelPosition-1,
         mentionable: true,
         reason: "A user created this role ..."
@@ -112,7 +111,7 @@ function createFinalRole(name, levelPosition, roleLevel, resolve, reject) {
 
         refreshCache();
 
-        resolve();
+        resolve(id);
     }).catch(reject);
 }
 
@@ -139,7 +138,7 @@ function createRole(roleName, roleLevel) { // crate role according to new inform
                                 name: ("level"+roleLevel.toString()),
                                 color: "DEFAULT",
                                 hoist: false,
-                                permissions: 0,
+                                permissions: guild.roles.everyone.permissions,
                                 position: guild.roles.everyone.position,
                                 mentionable: false,
                                 reason: "No level where found"
@@ -147,11 +146,11 @@ function createRole(roleName, roleLevel) { // crate role according to new inform
                                 console.log(`Created role #${role.id}, named ${role.name} at position #${role.position}`)
 
                                 levelPosition = role.position;
-                                createFinalRole(name, levelPosition, roleLevel, resolve, reject);
+                                createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject);
                             }).catch(console.error);
                         } else {
                             console.log("[*] Search ended with one result ")
-                            createFinalRole(name, levelPosition, roleLevel, resolve, reject);
+                            createFinalRole(guild, name, levelPosition, roleLevel, resolve, reject);
                         }
 
                     }).catch(reject);
@@ -160,24 +159,26 @@ function createRole(roleName, roleLevel) { // crate role according to new inform
     });
 }
 
-function processChoice(user, reply) {
-    console.log(`User ${user.username} choose ${reply.join(", ")}`);
-    let state = cache.activeComm[user.id].state;
+function postRoleApplication(state, user) {
+    if(state >= (cache.levels.length-1)) { // Last information
+        client.channels.fetch(cache.activeComm[user.id].DMChannelID)
+            .then((DMChannel) => {
+                DMChannel.send(format(config.messages.lastMessage));
+            })
 
-    let rolesIDs = [];
+        cache.activeComm[user.id].state = -1; // we finish the thing
 
-    reply.forEach((r) => {
-        if(isNaN(parseInt(r))) {
-            createRole(r, state)
-                .then((id) => {
-                    rolesIDs.push(id);
-                }).catch(console.error);
-        } else {
-            let id = cache.levels[state].content[Object.keys(cache.levels[state].content)[parseInt(r)]].id;
-            rolesIDs.push(id);
-        }
-    });
+        console.log("[!] Registration ended ! ");
+    } else {
+        cache.activeComm[user.id].state += 1;
+        console.log("[~] Going to next step");
+        procedure(user);
+    }
 
+    refreshCache();
+}
+
+async function applyRoles(user, rolesIDs, state) {
     client.guilds.fetch().then((guilds) => {
         guilds.forEach((guildOAuth) => {
             guildOAuth.fetch().then((guild) => {
@@ -185,27 +186,16 @@ function processChoice(user, reply) {
                 guild.members.search({query: user.username})
                     .then((member) => {
                         member.forEach((val, key, map) => {
-                            val.edit({roles: rolesIDs}, "Updated profile trough bot")
+                            // val.edit({roles: [...val.roles, ...rolesIDs]}, "Updated profile trough bot")
+                            //     .then((member) => {console.log(`${member.user.username} has been updated successfully with ${rolesIDs.join(", ")}`)})
+                            //     .catch(console.error);
+
+                            val.roles.add(rolesIDs, "Updated profile trough bot")
                                 .then((member) => {console.log(`${member.user.username} has been updated successfully with ${rolesIDs.join(", ")}`)})
                                 .catch(console.error);
                         })
 
-                        if(state === cache.levels.length) { // Last information
-                            client.channels.fetch(cache.activeComm[user.id].DMChannelID)
-                                .then((DMChannel) => {
-                                    DMChannel.send(format(config.messages.lastMessage));
-                                })
-
-                            cache.activeComm[user.id].state = -1; // we finish the thing
-
-                            console.log("[!] Registration ended ! ");
-                        } else {
-                            cache.activeComm[user.id].state += 1;
-                            console.log("[~] Going to next step");
-                            procedure(user);
-                        }
-
-                        refreshCache();
+                        postRoleApplication(state, user);
                     })
                     .catch(console.error);
             }).catch(console.error);
@@ -213,6 +203,36 @@ function processChoice(user, reply) {
     }).catch((error) => {
         console.log(`ERROR ${error}`);
     });
+}
+
+function processChoice(user, reply) {
+    console.log(`User ${user.username} choose ${reply.join(", ")}`);
+    let state = cache.activeComm[user.id].state;
+
+    // let rolesIDs = [];
+
+    reply.forEach((r) => {
+        if(isNaN(parseInt(r))) {
+            console.log("[$] Creating Role");
+            createRole(r, state)
+                .then((id) => {
+                    // rolesIDs.push(id);
+
+                    console.log("[$] Applying role after creation")
+                    // applyRoles(user, rolesIDs, state);
+                    await applyRoles(user, [id], state);
+                }).catch(console.error);
+        } else {
+            let id = cache.levels[state].content[Object.keys(cache.levels[state].content)[parseInt(r)]].id;
+            // rolesIDs.push(id);
+
+            console.log("[.] Applying already existing role")
+            // applyRoles(user, rolesIDs, state);
+            applyRoles(user, [id], state);
+        }
+    });
+
+
 }
 
 function handleResponse(user, message) { // If this function is called, the user is registered in cache, no verification needed in this case
@@ -223,7 +243,6 @@ function handleResponse(user, message) { // If this function is called, the user
 
     let replyD = reply;  // reply with maybe some duplicates
     reply = uniq(reply); // Delete duplicates
-    reply = reply.filter(i => i !== "."); // delete every "." (usefull for options)
 
     let stdQTY = cache.levels[state].qty;
     let maxId = Object.keys(cache.levels[state].content).length;
@@ -233,6 +252,14 @@ function handleResponse(user, message) { // If this function is called, the user
     if(replyD.length !== reply.length) {
         error = format(config.messages.duplicatesInAnswer);
     }
+
+    reply = reply.filter(i => i !== "."); // delete every "." (usefull for options)
+
+    if(reply.length === 0 && state === (cache.levels.length - 1)) { // If last level and no answer -> no changes
+        postRoleApplication(state, user); // Get directly to message
+        return;
+    }
+
     if(stdQTY === -1 && reply.length === 0) {
         error = format(config.messages.shouldHaveAtLeastOneChoice);
     }
@@ -273,7 +300,7 @@ function procedure(user) { // This function will handle the communication with t
                 if(cache.activeComm[user.id].state === -1) {
                     DMChannel.send("An error occurred : procedure() was called for the user with -1 registration ...");
                 } else {
-                    if(cache.levels.length >= level) {
+                    if(cache.levels.length >= (level+1)) {
                         let msg = config.messages["level"+level.toString()]; // Is there a predefined message ?
 
                         msg = msg || ("Bien, on va alors passer à la suite : "+cache.levels[level].name); // If not, go for the default one
