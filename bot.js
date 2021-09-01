@@ -179,63 +179,43 @@ function postRoleApplication(state, user) {
 }
 
 async function applyRoles(user, rolesIDs, state) {
-    client.guilds.fetch().then((guilds) => {
-        guilds.forEach((guildOAuth) => {
-            guildOAuth.fetch().then((guild) => {
-                console.log(`[^] Applying for ${guild.name}`)
-                guild.members.search({query: user.username})
-                    .then((member) => {
-                        member.forEach((val, key, map) => {
-                            // val.edit({roles: [...val.roles, ...rolesIDs]}, "Updated profile trough bot")
-                            //     .then((member) => {console.log(`${member.user.username} has been updated successfully with ${rolesIDs.join(", ")}`)})
-                            //     .catch(console.error);
+    let guildsOAuth = await client.guilds.fetch();
 
-                            val.roles.add(rolesIDs, "Updated profile trough bot")
-                                .then((member) => {console.log(`${member.user.username} has been updated successfully with ${rolesIDs.join(", ")}`)})
-                                .catch(console.error);
-                        })
+    await Promise.all(guildsOAuth.map(async (guildOAuth) => {
+        let guild = await guildOAuth.fetch();
+        console.log(`[^] Applying for ${guild.name}`);
+        let member = await guild.members.search({query: user.username});
 
-                        postRoleApplication(state, user);
-                    })
-                    .catch(console.error);
-            }).catch(console.error);
-        });
-    }).catch((error) => {
-        console.log(`ERROR ${error}`);
-    });
+        await Promise.all(member.map(async (val, key, map) => {
+            let member = await val.roles.add(rolesIDs, "Updated profile trough bot");
+            console.log(`${member.user.username} has been updated successfully with ${rolesIDs.join(", ")}`)
+        }));
+    }));
 }
 
-function processChoice(user, reply) {
+async function processChoice(user, reply) {
     console.log(`User ${user.username} choose ${reply.join(", ")}`);
     let state = cache.activeComm[user.id].state;
 
-    // let rolesIDs = [];
-
-    reply.forEach((r) => {
+    await Promise.all(reply.map(async (r) => {
         if(isNaN(parseInt(r))) {
             console.log("[$] Creating Role");
-            createRole(r, state)
-                .then((id) => {
-                    // rolesIDs.push(id);
+            let id = await createRole(r, state);
 
-                    console.log("[$] Applying role after creation")
-                    // applyRoles(user, rolesIDs, state);
-                    await applyRoles(user, [id], state);
-                }).catch(console.error);
+            console.log("[$] Applying role after creation")
+            await applyRoles(user, [id], state);
         } else {
             let id = cache.levels[state].content[Object.keys(cache.levels[state].content)[parseInt(r)]].id;
-            // rolesIDs.push(id);
 
             console.log("[.] Applying already existing role")
-            // applyRoles(user, rolesIDs, state);
-            applyRoles(user, [id], state);
+            await applyRoles(user, [id], state);
         }
-    });
+    }));
 
-
+    postRoleApplication(state, user);
 }
 
-function handleResponse(user, message) { // If this function is called, the user is registered in cache, no verification needed in this case
+async function handleResponse(user, message) { // If this function is called, the user is registered in cache, no verification needed in this case
     let ct = message.content.replace(/ */, ""); // Delete blank spaces before msg
     let state = cache.activeComm[user.id].state;
 
@@ -273,11 +253,10 @@ function handleResponse(user, message) { // If this function is called, the user
     }
 
     if(error !== "") {
-        message.reply(error)
-            .then(() => {console.log(`An error occured with ${user.username}#${user.tag}, replied ${error}`)})
-            .catch(console.error);
+        await message.reply(error);
+        console.log(`An error occured with ${user.username}#${user.tag}, replied ${error}`);
     } else {
-        processChoice(user, reply);
+        await processChoice(user, reply);
     }
 }
 
@@ -414,7 +393,7 @@ client.on("guildMemberAdd", (member) => { // Whenever someone joins the server
     handleNewUser(member.user, false)
 })
 
-client.on("messageCreate", (message) => { // Whenever someone send a message
+client.on("messageCreate", async (message) => { // Whenever someone send a message
     if(!message.author.bot) {
         console.log(`New message from ${message.author.username} on ${message.guildId} : ${message.content}`);
 
@@ -424,7 +403,7 @@ client.on("messageCreate", (message) => { // Whenever someone send a message
         }
         else {
             if(checkIfInProcedure(message.author) && (message.guildId === null)) { // If DM + in procedure
-                handleResponse(message.author, message);
+                await handleResponse(message.author, message);
             }
         }
     }
