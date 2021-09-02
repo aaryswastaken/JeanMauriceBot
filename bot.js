@@ -241,8 +241,8 @@ async function handleChannelCreation(roleName, roleLevel, affiliationType, guild
 }
 
 async function createRole(roleName, roleLevel, affiliationType, user) { // crate role according to new information
-    let name = roleName.replace(/ */, "").toLowerCase();
-    name[0] = name[0].toUpperCase();
+    // let name = roleName.replace(/ */, "");
+    let name = roleName.toString();
 
     let guildsOAuth = await client.guilds.fetch();
 
