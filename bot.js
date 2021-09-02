@@ -356,7 +356,7 @@ async function processChoice(user, reply) {
 }
 
 async function handleResponse(user, message) { // If this function is called, the user is registered in cache, no verification needed in this case
-    let ct = message.content.replace(/ */, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replaceAll(/[,.;:/gm, " ").replaceAll(/ */gm, " "); // Delete blank spaces before msg
+    let ct = message.content.replace(/ */, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replaceAll(/[,.;:]/gm, " ").replaceAll(/ */gm, " "); // Delete blank spaces before msg
     let state = cache.activeComm[user.id].state;
 
     let reply = ct.split(" ");
