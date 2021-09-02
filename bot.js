@@ -578,22 +578,14 @@ client.login(process.env.TOKEN) // Entrypoint
         if(Object.keys(config).includes("log")) {
             if(Object.keys(config.log).includes("channel")) {
                 output.log("! Searching for log channel ...");
-                let channels = await client.channels.fetch();
-                await Promise.all(channels.map(async (channel) => {
-                    if(channel.id == config.log.channel) {
-                        output.log(`! Found one channel : ${channel.name}`);
-                        logChannel = channel;
-                    }
-                })); 
+                let logChannel = await client.channels.fetch(config.log.channel);
+                    
+                output.log("[^] Overriding output.log for discord log");
+        
+                output = {log: (message) => {console.log(message); logChannel.send(message)}};
+                output.error = output.log; // Working ... I guess
+                output.warn =  output.log;
             }
-        }
-        
-        if(logChannel !== -1) {
-            output.log("[^] Overriding output.log for discord log");
-        
-            output = {log: (message) => {console.log(message); logChannel.send(message)}};
-            output.error = output.log; // Working ... I guess
-            output.warn =  output.log;
         }
         
         output.log("[*] Restoring DM ... ");
