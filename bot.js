@@ -284,7 +284,7 @@ async function createRole(roleName, roleLevel, affiliationType, user) { // crate
             roleID = await createFinalRole(guild, name, levelPosition, roleLevel);
 
             console.log("Starting Channel Creation ...")
-            await handleChannelCreation(roleName, roleLevel, affiliationType, guild, user, roleID);
+            await handleChannelCreation(name, roleLevel, affiliationType, guild, user, roleID);
         })
     )
 
