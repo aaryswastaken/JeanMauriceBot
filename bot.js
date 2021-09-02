@@ -347,7 +347,8 @@ async function processChoice(user, reply) {
         if(affiliationType === 0) {
             console.log(`Caching lastAffiliation`)
             // cache.activeComm[user.id].lastAffiliation = cache.levels[state].content[Object.keys(cache.levels[state].content)[parseInt(r)]].affiliation;
-            cache.activeComm[user.id].lastAffiliation = cache.levels[state].content[r].affiliation;
+            let index = (isChar(r) ? r : Object.keys(cache.levels[state].content)[parseInt(r)]);
+            cache.activeComm[user.id].lastAffiliation = cache.levels[state].content[index].affiliation;
         }
     }));
 
