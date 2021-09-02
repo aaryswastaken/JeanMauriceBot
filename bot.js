@@ -576,7 +576,7 @@ let logChannel = -1;
 client.login(process.env.TOKEN) // Entrypoint
     .then(async (r) => {
         if(Object.keys(config).includes("log")) {
-            if(Object.keys(config.log).includes("channel") {
+            if(Object.keys(config.log).includes("channel")) {
                 output.log("! Searching for log channel ...");
                 let channels = await client.channels.fetch();
                 await Promise.all(channels.map(async (channel) => {
